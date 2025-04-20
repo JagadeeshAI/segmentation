@@ -18,15 +18,16 @@ class Config:
     BATCH_SIZE = 32
 
     LEARNING_RATE = 1e-3
-    EPOCHS = 100
+    EPOCHS = 1000
 
     CHECKPOINT_PATH = os.path.join(MODEL_DIR, "model_epoch_{epoch:03d}.weights.h5")
     FINAL_MODEL_PATH = os.path.join(MODEL_DIR, "final_model.h5")
     CSV_PATH = os.path.join(STATS_DIR, "training_history.csv")
     PLOT_PATH = os.path.join(PLOTS_DIR, "training_metrics.png")
 
-    RESUME = True
+    RESUME = False
     MODEL='unet'
+    CHECKPOINT_META_PATH="results/unet/checkpoint_meta.json"
 
 for path in [
     Config.OUT_DIR,

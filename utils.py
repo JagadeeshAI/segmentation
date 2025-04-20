@@ -1,115 +1,83 @@
-import matplotlib.pyplot as plt
-from config import Config
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, CSVLogger, EarlyStopping
 import os
-
-import segmentation_models_pytorch as smp
+import glob
+import matplotlib.pyplot as plt
 import torch
+import segmentation_models_pytorch as smp
 from config import Config
 
 
-def plot_history(history):
+def plot_history(log_path=Config.CSV_PATH, save_path=Config.PLOT_PATH):
+    """Plot training history from CSV log file."""
+    import pandas as pd
 
-    # Create and save training plot
+    if not os.path.exists(log_path):
+        print(f"Log file {log_path} not found.")
+        return
+
+    history = pd.read_csv(log_path)
+
     plt.figure(figsize=(15, 10))
 
     # Plot loss
     plt.subplot(2, 2, 1)
-    plt.plot(history.history["loss"], label="Training Loss")
-    plt.plot(history.history["val_loss"], label="Validation Loss")
+    plt.plot(history["train_loss"], label="Training Loss")
+    plt.plot(history["val_loss"], label="Validation Loss")
     plt.title("Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
 
     # Plot IoU score
-    plt.subplot(2, 2, 2)
-    plt.plot(history.history["iou_score"], label="Training IoU")
-    plt.plot(history.history["val_iou_score"], label="Validation IoU")
-    plt.title("IoU Score")
-    plt.xlabel("Epoch")
-    plt.ylabel("IoU")
-    plt.legend()
+    if "val_iou" in history.columns:
+        plt.subplot(2, 2, 2)
+        plt.plot(history["val_iou"], label="Validation IoU")
+        plt.title("IoU Score")
+        plt.xlabel("Epoch")
+        plt.ylabel("IoU")
+        plt.legend()
 
-    # Plot F1 score
-    plt.subplot(2, 2, 3)
-    plt.plot(history.history["f1_score"], label="Training F1")
-    plt.plot(history.history["val_f1_score"], label="Validation F1")
-    plt.title("F1 Score")
-    plt.xlabel("Epoch")
-    plt.ylabel("F1")
-    plt.legend()
-
-    # Plot Precision and Recall
-    plt.subplot(2, 2, 4)
-    plt.plot(history.history["precision"], label="Training Precision")
-    plt.plot(history.history["val_precision"], label="Validation Precision")
-    plt.plot(history.history["recall"], label="Training Recall")
-    plt.plot(history.history["val_recall"], label="Validation Recall")
-    plt.title("Precision and Recall")
-    plt.xlabel("Epoch")
-    plt.ylabel("Score")
-    plt.legend()
+    # Plot Dice score
+    if "val_dice" in history.columns:
+        plt.subplot(2, 2, 3)
+        plt.plot(history["val_dice"], label="Validation Dice")
+        plt.title("Dice Score")
+        plt.xlabel("Epoch")
+        plt.ylabel("Dice")
+        plt.legend()
 
     plt.tight_layout()
-    plt.savefig(Config.PLOT_PATH)
-    print(f"Training metrics plot saved to {Config.PLOT_PATH}")
+    plt.savefig(save_path)
+    print(f"Training metrics plot saved to {save_path}")
 
 
-import glob
-
-
-def create_callbacks():
-    """Create training callbacks to save model only when val_iou_score improves (max 6 checkpoints)"""
-
-    def cleanup_old_checkpoints():
-        """Keep only the 6 most recent model checkpoints"""
-        checkpoint_files = sorted(
-            glob.glob(os.path.join(Config.MODEL_DIR, "model_epoch_*.weights.h5"))
-        )
-        if len(checkpoint_files) > 6:
-            num_to_delete = len(checkpoint_files) - 6
-            for file in checkpoint_files[:num_to_delete]:
-                print(f"Deleting old checkpoint: {file}")
-                os.remove(file)
-
-    class CustomCheckpointCallback(ModelCheckpoint):
-        def on_epoch_end(self, epoch, logs=None):
-            super().on_epoch_end(epoch, logs)
-            cleanup_old_checkpoints()
-
-    # Use the custom callback instead of the regular one
-
-    model_checkpoint_callback = CustomCheckpointCallback(
-        filepath=Config.CHECKPOINT_PATH,
-        save_weights_only=True,
-        monitor="val_iou_score",
-        mode="max",
-        verbose=1,
-        save_best_only=True,
+def cleanup_old_checkpoints(keep_last=6):
+    """Keep only the most recent checkpoints."""
+    checkpoint_files = sorted(
+        glob.glob(os.path.join(Config.MODEL_DIR, "model_epoch_*.pt"))
     )
+    if len(checkpoint_files) > keep_last:
+        for file in checkpoint_files[:len(checkpoint_files) - keep_last]:
+            print(f"Deleting old checkpoint: {file}")
+            os.remove(file)
 
-    return [
-        model_checkpoint_callback,
-        ReduceLROnPlateau(
-            monitor="val_loss", patience=3, factor=0.05, verbose=1, min_lr=1e-5
-        ),
-        CSVLogger(Config.CSV_PATH),
-    ]
 
+def get_callbacks():
+    """Just a placeholder for PyTorch since we don't use callbacks directly like Keras."""
+    # You can integrate your own scheduler or model saving here if needed
+    return []
 
 
 def defineModel():
+    """Build and return a segmentation model based on Config.MODEL."""
     model_name = Config.MODEL.lower()
 
     if model_name == "unet":
-        # Use SMP's pretrained U-Net with ResNet34 encoder
         model = smp.Unet(
             encoder_name="resnet34",
             encoder_weights="imagenet",
             in_channels=3,
-            classes=1,              
-            activation=None          
+            classes=1,
+            activation=None,  # No sigmoid here; handle in loss or output
         )
     else:
         raise ValueError(
@@ -117,3 +85,35 @@ def defineModel():
         )
 
     return model
+
+
+def compute_metrics(preds, targets, threshold=0.5):
+    preds = (preds > threshold).astype(float)
+    targets = targets.astype(float)
+
+    smooth = 1e-8
+    intersection = (preds * targets).sum()
+    union = preds.sum() + targets.sum()
+
+    dice = (2.0 * intersection + smooth) / (union + smooth)
+    iou = (intersection + smooth) / ((union - intersection) + smooth)
+
+    return {
+        "dice": dice,
+        "iou": iou,
+    }
+
+
+
+def dice_loss(pred, target, smooth=1e-6):
+    """
+    Compute Dice Loss for binary segmentation.
+    pred: raw logits from the model (before sigmoid)
+    target: ground truth mask (same shape)
+    """
+    pred = torch.sigmoid(pred)
+    pred_flat = pred.view(-1)
+    target_flat = target.view(-1)
+    
+    intersection = (pred_flat * target_flat).sum()
+    return 1 - ((2.0 * intersection + smooth) / (pred_flat.sum() + target_flat.sum() + smooth))
