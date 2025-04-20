@@ -6,7 +6,7 @@ class Config:
     DATA_PATH_MASKS = "./data/merge_pipedata_label/*.jpg"
 
     # Output directory structure
-    OUT_DIR = "./results/unet"
+    OUT_DIR = "./results/fcn"
     MODEL_DIR = os.path.join(OUT_DIR, "models")
     STATS_DIR = os.path.join(OUT_DIR, "stats")
     LOGS_DIR = os.path.join(OUT_DIR, "logs")
@@ -25,8 +25,8 @@ class Config:
     CSV_PATH = os.path.join(STATS_DIR, "training_history.csv")
     PLOT_PATH = os.path.join(PLOTS_DIR, "training_metrics.png")
 
-    RESUME = False
-    MODEL='unet'
+    RESUME = True
+    MODEL='fcn'
     CHECKPOINT_META_PATH="results/unet/checkpoint_meta.json"
 
 for path in [

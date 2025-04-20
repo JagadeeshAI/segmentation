@@ -4,68 +4,9 @@ import matplotlib.pyplot as plt
 import torch
 import segmentation_models_pytorch as smp
 from config import Config
-
-
-def plot_history(log_path=Config.CSV_PATH, save_path=Config.PLOT_PATH):
-    """Plot training history from CSV log file."""
-    import pandas as pd
-
-    if not os.path.exists(log_path):
-        print(f"Log file {log_path} not found.")
-        return
-
-    history = pd.read_csv(log_path)
-
-    plt.figure(figsize=(15, 10))
-
-    # Plot loss
-    plt.subplot(2, 2, 1)
-    plt.plot(history["train_loss"], label="Training Loss")
-    plt.plot(history["val_loss"], label="Validation Loss")
-    plt.title("Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-
-    # Plot IoU score
-    if "val_iou" in history.columns:
-        plt.subplot(2, 2, 2)
-        plt.plot(history["val_iou"], label="Validation IoU")
-        plt.title("IoU Score")
-        plt.xlabel("Epoch")
-        plt.ylabel("IoU")
-        plt.legend()
-
-    # Plot Dice score
-    if "val_dice" in history.columns:
-        plt.subplot(2, 2, 3)
-        plt.plot(history["val_dice"], label="Validation Dice")
-        plt.title("Dice Score")
-        plt.xlabel("Epoch")
-        plt.ylabel("Dice")
-        plt.legend()
-
-    plt.tight_layout()
-    plt.savefig(save_path)
-    print(f"Training metrics plot saved to {save_path}")
-
-
-def cleanup_old_checkpoints(keep_last=6):
-    """Keep only the most recent checkpoints."""
-    checkpoint_files = sorted(
-        glob.glob(os.path.join(Config.MODEL_DIR, "model_epoch_*.pt"))
-    )
-    if len(checkpoint_files) > keep_last:
-        for file in checkpoint_files[:len(checkpoint_files) - keep_last]:
-            print(f"Deleting old checkpoint: {file}")
-            os.remove(file)
-
-
-def get_callbacks():
-    """Just a placeholder for PyTorch since we don't use callbacks directly like Keras."""
-    # You can integrate your own scheduler or model saving here if needed
-    return []
-
+import torchvision.models.segmentation as models
+import torch.nn as nn
+from ptflops import get_model_complexity_info
 
 def defineModel():
     """Build and return a segmentation model based on Config.MODEL."""
@@ -77,14 +18,23 @@ def defineModel():
             encoder_weights="imagenet",
             in_channels=3,
             classes=1,
-            activation=None,  # No sigmoid here; handle in loss or output
+            activation=None,  # We'll apply sigmoid manually
         )
+
+    elif model_name == "fcn":
+        model = models.fcn_resnet50(pretrained=True)
+        # Replace classifier to output 1 class (for binary segmentation)
+        model.classifier[4] = nn.Conv2d(512, 1, kernel_size=1)
+        model.aux_classifier[4] = nn.Conv2d(256, 1, kernel_size=1)  # Optional aux head
+        model.aux_classifier = None  # Disable aux branch if not needed
+
     else:
         raise ValueError(
-            f"Model '{Config.MODEL}' is not supported. Only 'unet' is implemented."
+            f"Model '{Config.MODEL}' is not supported. Use 'unet' or 'fcn'."
         )
 
     return model
+
 
 
 def compute_metrics(preds, targets, threshold=0.5):
@@ -104,7 +54,6 @@ def compute_metrics(preds, targets, threshold=0.5):
     }
 
 
-
 def dice_loss(pred, target, smooth=1e-6):
     """
     Compute Dice Loss for binary segmentation.
@@ -117,3 +66,14 @@ def dice_loss(pred, target, smooth=1e-6):
     
     intersection = (pred_flat * target_flat).sum()
     return 1 - ((2.0 * intersection + smooth) / (pred_flat.sum() + target_flat.sum() + smooth))
+
+def print_model_stats(model, input_res):
+        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Trainable Parameters: {num_params / 1e6:.2f}M")
+
+        try:
+            with torch.cuda.device(0 if torch.cuda.is_available() else "cpu"):
+                macs, _ = get_model_complexity_info(model, input_res, as_strings=False, print_per_layer_stat=False)
+                print(f"FLOPs: {macs / 1e6:.2f}M")
+        except Exception as e:
+            print(f"FLOPs calculation failed: {e}")

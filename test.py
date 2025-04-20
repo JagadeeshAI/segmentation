@@ -23,7 +23,8 @@ def load_best_model(model, checkpoint_dir):
     if not checkpoints:
         raise FileNotFoundError("No checkpoints found.")
     best_path = checkpoints[-1]
-    model.load_state_dict(torch.load(best_path, map_location="cpu"))
+    checkpoint = torch.load(best_path, map_location="cpu")
+    model.load_state_dict(checkpoint["model_state_dict"])
     print(f"Loaded best model from: {best_path}")
     return model
 

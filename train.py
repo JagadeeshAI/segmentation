@@ -10,7 +10,7 @@ from tqdm import tqdm
 import numpy as np
 from config import Config
 from data_process import SegmentationDataset, load_dataset
-from utils import defineModel, compute_metrics, dice_loss
+from utils import defineModel, compute_metrics, dice_loss,print_model_stats
 
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
@@ -20,6 +20,10 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         images, masks = images.to(device), masks.to(device)
         optimizer.zero_grad()
         outputs = model(images)
+
+        if Config.MODEL.lower() == "fcn":
+            outputs = outputs["out"]
+
         loss = criterion(outputs, masks)
         loss.backward()
         optimizer.step()
@@ -35,6 +39,10 @@ def validate(model, loader, criterion, device):
         for images, masks in tqdm(loader, desc="Validating"):
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
+
+            if Config.MODEL.lower() == "fcn":
+                outputs = outputs["out"]
+
             loss = criterion(outputs, masks)
             val_loss += loss.item()
 
@@ -92,6 +100,13 @@ def main():
     best_iou = 0.0
     start_epoch = 1
     model = defineModel().to(device)
+
+    sample_image = SegmentationDataset(train_x, train_y)[0][0]  # get the image tensor only
+    input_res = tuple(sample_image.shape) 
+
+    print_model_stats(model, input_res)
+
+
     latest_checkpoint_path = None
 
     # Resume logic
