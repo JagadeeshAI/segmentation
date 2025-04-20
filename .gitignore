@@ -1,0 +1,47 @@
+# Ignore dataset folder
+/data/
+
+# Ignore all files inside results directory
+/results/*
+
+# Ignore Weights & Biases logs
+/wandb/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment files
+.env
+.venv
+env/
+venv/
+ENV/
+
+# PyTorch cache
+~/.torch/
+
+# VSCode settings
+.vscode/
+
+# MacOS files
+.DS_Store
+
+# Logs
+*.log
+
+# Python virtual environment and build artifacts
+*.egg-info/
+dist/
+build/
+
+# PyCharm project directory
+__pycharm__/
+.idea/
+
+# Just in case the typo was intentional
+__pychram__/
