@@ -10,8 +10,7 @@ from tqdm import tqdm
 import numpy as np
 from config import Config
 from data_process import SegmentationDataset, load_dataset
-from utils import defineModel, compute_metrics, dice_loss,print_model_stats
-
+from utils import defineModel, compute_metrics, dice_loss, print_model_stats
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
     model.train()
@@ -24,12 +23,14 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         if Config.MODEL.lower() == "fcn":
             outputs = outputs["out"]
 
+        if outputs.shape[-2:] != masks.shape[-2:]:
+            outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode='bilinear', align_corners=False)
+
         loss = criterion(outputs, masks)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
     return total_loss / len(loader)
-
 
 def validate(model, loader, criterion, device):
     model.eval()
@@ -42,6 +43,9 @@ def validate(model, loader, criterion, device):
 
             if Config.MODEL.lower() == "fcn":
                 outputs = outputs["out"]
+
+            if outputs.shape[-2:] != masks.shape[-2:]:
+                outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode='bilinear', align_corners=False)
 
             loss = criterion(outputs, masks)
             val_loss += loss.item()
@@ -56,13 +60,11 @@ def validate(model, loader, criterion, device):
     metrics = compute_metrics(all_preds, all_targets)
     return val_loss / len(loader), metrics
 
-
 def save_checkpoint(model, path, metadata):
     torch.save({
         "model_state_dict": model.state_dict(),
         "metadata": metadata
     }, path)
-
 
 def load_checkpoint(path, model):
     checkpoint = torch.load(path, map_location="cpu")
@@ -70,12 +72,10 @@ def load_checkpoint(path, model):
     metadata = checkpoint.get("metadata", {})
     return model, metadata
 
-
 def save_checkpoint_metadata(json_path, metadata):
     with open(json_path, "w") as f:
         json.dump(metadata, f, indent=4)
-    print(f"✔️ Metadata updated at {json_path}")
-
+    print(f"Metadata updated at {json_path}")
 
 def main():
     print(f"Starting segmentation training using {Config.OUT_DIR}...")
@@ -87,7 +87,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load data
     images = sorted(glob.glob(Config.DATA_PATH_IMAGES))
     masks = sorted(glob.glob(Config.DATA_PATH_MASKS))
     train_x, val_x, train_y, val_y, test_x, test_y = load_dataset(images, masks)
@@ -101,15 +100,12 @@ def main():
     start_epoch = 1
     model = defineModel().to(device)
 
-    sample_image = SegmentationDataset(train_x, train_y)[0][0]  # get the image tensor only
-    input_res = tuple(sample_image.shape) 
-
+    sample_image = SegmentationDataset(train_x, train_y)[0][0]
+    input_res = tuple(sample_image.shape)
     print_model_stats(model, input_res)
-
 
     latest_checkpoint_path = None
 
-    # Resume logic
     if Config.RESUME and os.path.exists(Config.CHECKPOINT_META_PATH):
         with open(Config.CHECKPOINT_META_PATH, "r") as f:
             resume_info = json.load(f)
@@ -119,7 +115,7 @@ def main():
         best_iou = metadata.get("best_iou", 0.0)
         best_dice = metadata.get("best_dice", 0.0)
         start_epoch = metadata.get("epoch", 1) + 1
-        print(f"\u2192 Resumed at epoch {start_epoch}, Best IoU={best_iou:.4f}, Best Dice={best_dice:.4f}")
+        print(f"→ Resumed at epoch {start_epoch}, Best IoU={best_iou:.4f}, Best Dice={best_dice:.4f}")
     else:
         print("Starting from scratch.")
 
@@ -157,9 +153,8 @@ def main():
 
             save_checkpoint(model, checkpoint_path, metadata)
             save_checkpoint_metadata(Config.CHECKPOINT_META_PATH, metadata)
-            print(f"\u2714\ufe0f Model saved: {checkpoint_path}")
+            print(f"✔️ Model saved: {checkpoint_path}")
 
-            # Cleanup older checkpoints (keep last 6)
             checkpoint_files = sorted(
                 glob.glob(os.path.join(Config.MODEL_DIR, f"{model_name}_ep*.pth")),
                 key=os.path.getmtime
@@ -175,7 +170,6 @@ def main():
     print(f"Test metrics: {test_metrics}")
     wandb.log({"test_" + k: v for k, v in test_metrics.items()})
     wandb.finish()
-
 
 if __name__ == "__main__":
     main()
