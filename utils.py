@@ -7,13 +7,13 @@ from config import Config
 import torchvision.models.segmentation as models
 import torch.nn as nn
 from ptflops import get_model_complexity_info
-
+import numpy as np
 import torch.nn as nn
 import segmentation_models_pytorch as smp
 import torchvision.models.segmentation as models
 import torchvision.models as tv_models
 from config import Config
-
+from transformers import SegformerForSemanticSegmentation
 
 class BasicSegNet(nn.Module):
     def __init__(self, num_classes=1):
@@ -87,6 +87,11 @@ def defineModel():
             activation=None,
         )
 
+    elif model_name == "segformer":
+        model = SegformerForSemanticSegmentation.from_pretrained(
+            "nvidia/segformer-b0-finetuned-ade-512-512"
+        )
+
     else:
         raise ValueError(
             f"Model '{Config.MODEL}' is not supported. Use 'unet', 'fcn', 'segnet', 'pspnet', or 'deeplabv3+'."
@@ -97,21 +102,29 @@ def defineModel():
 
 
 
-def compute_metrics(preds, targets, threshold=0.5):
-    preds = (preds > threshold).astype(float)
-    targets = targets.astype(float)
+def compute_metrics(preds, targets, threshold=0.5, eps=1e-7):
+    preds_bin = (preds > threshold).astype(np.uint8)
+    targets_bin = (targets > 0.5).astype(np.uint8)
 
-    smooth = 1e-8
-    intersection = (preds * targets).sum()
-    union = preds.sum() + targets.sum()
+    tp = np.sum(preds_bin * targets_bin)
+    fp = np.sum(preds_bin * (1 - targets_bin))
+    fn = np.sum((1 - preds_bin) * targets_bin)
+    tn = np.sum((1 - preds_bin) * (1 - targets_bin))
 
-    dice = (2.0 * intersection + smooth) / (union + smooth)
-    iou = (intersection + smooth) / ((union - intersection) + smooth)
+    precision = tp / (tp + fp + eps)
+    recall = tp / (tp + fn + eps)
+    f1 = 2 * precision * recall / (precision + recall + eps)
+    iou = tp / (tp + fp + fn + eps)
+    dice = (2 * tp) / (2 * tp + fp + fn + eps)
 
     return {
-        "dice": dice,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
         "iou": iou,
+        "dice": dice
     }
+
 
 
 def dice_loss(pred, target, smooth=1e-6):

@@ -19,28 +19,30 @@ class SegmentationDataset(Dataset):
         return len(self.image_paths)
 
     def __getitem__(self, idx):
-        # Load image and convert BGR to RGB
         image = cv2.imread(self.image_paths[idx])[:, :, ::-1].astype(np.float32)
         mask = cv2.imread(self.mask_paths[idx], cv2.IMREAD_GRAYSCALE)
 
-        # Normalize image (0–1 range)
         if self.normalize:
             image /= 255.0
 
-        # Convert image to CHW format
         image = np.transpose(image, (2, 0, 1))  # (C, H, W)
         mask = np.expand_dims((mask < 128).astype(np.float32), axis=0)  # (1, H, W)
 
-        # Padding if needed
         _, h, w = image.shape
-        pad_h = self.target_height - h if h < self.target_height else 0
-        pad_w = self.target_width - w if w < self.target_width else 0
+
+        # Compute target dimensions as next multiple of 32
+        target_h = ((h + 31) // 32) * 32
+        target_w = ((w + 31) // 32) * 32
+
+        pad_h = target_h - h
+        pad_w = target_w - w
 
         if pad_h > 0 or pad_w > 0:
             image = np.pad(image, ((0, 0), (0, pad_h), (0, pad_w)), mode='constant')
             mask = np.pad(mask, ((0, 0), (0, pad_h), (0, pad_w)), mode='constant')
 
         return torch.tensor(image, dtype=torch.float32), torch.tensor(mask, dtype=torch.float32)
+
 
 
 def load_dataset(image_paths, mask_paths, random_state=360):

@@ -14,6 +14,7 @@ from data_process import SegmentationDataset, load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+
 def load_best_model(model, checkpoint_dir):
     checkpoints = sorted(
         glob.glob(os.path.join(checkpoint_dir, "*.pth")),
@@ -27,6 +28,7 @@ def load_best_model(model, checkpoint_dir):
     print(f"Loaded best model from: {best_path}")
     return model
 
+
 def evaluate(model, loader, device):
     model.eval()
     all_preds, all_targets = [], []
@@ -38,6 +40,8 @@ def evaluate(model, loader, device):
 
             if Config.MODEL.lower() == "fcn":
                 outputs = outputs["out"]
+            elif Config.MODEL.lower() == "segformer":
+                outputs = outputs.logits
 
             if outputs.shape[-2:] != masks.shape[-2:]:
                 outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode='bilinear', align_corners=False)
@@ -51,6 +55,7 @@ def evaluate(model, loader, device):
     targets = np.concatenate(all_targets)
     return compute_metrics(preds, targets)
 
+
 def visualize_predictions(model, loader, device, save_dir, num_samples=5):
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
@@ -63,6 +68,8 @@ def visualize_predictions(model, loader, device, save_dir, num_samples=5):
 
         if Config.MODEL.lower() == "fcn":
             outputs = outputs["out"]
+        elif Config.MODEL.lower() == "segformer":
+            outputs = outputs.logits
 
         if outputs.shape[-2:] != masks.shape[-2:]:
             outputs = torch.nn.functional.interpolate(outputs, size=masks.shape[-2:], mode='bilinear', align_corners=False)
@@ -72,7 +79,9 @@ def visualize_predictions(model, loader, device, save_dir, num_samples=5):
     for i in range(min(num_samples, len(images))):
         img = (images[i].cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
 
-        true_mask = (masks[i].cpu().numpy()[0] * 255).astype(np.uint8)
+        true_mask = (1 - masks[i].cpu().numpy()[0]) > 0.5
+        true_mask = (true_mask.astype(np.uint8)) * 255
+
         pred_mask = (preds[i][0] > 0.5).astype(np.uint8) * 255
 
         true_rgb = cv2.cvtColor(true_mask, cv2.COLOR_GRAY2RGB)
@@ -85,6 +94,7 @@ def visualize_predictions(model, loader, device, save_dir, num_samples=5):
         wandb.log({f"sample_{i+1}": wandb.Image(stacked)})
 
     print(f"Saved {num_samples} visualizations to {save_dir}")
+
 
 def plot_training_history(csv_path, output_path):
     if not os.path.exists(csv_path):
@@ -124,6 +134,7 @@ def plot_training_history(csv_path, output_path):
     print(f"Saved training plot to {output_path}")
     wandb.log({"training_plot": wandb.Image(output_path)})
 
+
 def main():
     print("Starting PyTorch segmentation testing...")
 
@@ -137,6 +148,8 @@ def main():
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device,"used device is")
+    # exit()
 
     images = sorted(glob.glob(Config.DATA_PATH_IMAGES))
     masks = sorted(glob.glob(Config.DATA_PATH_MASKS))
@@ -147,7 +160,8 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=Config.BATCH_SIZE, shuffle=False)
 
     model = defineModel().to(device)
-    model = load_best_model(model, Config.MODEL_DIR)
+    if Config.FineTuned:
+        model = load_best_model(model, Config.MODEL_DIR)
 
     metrics = evaluate(model, test_loader, device)
     print("\nTest Metrics:")
@@ -155,10 +169,23 @@ def main():
         print(f"{k}: {v:.4f}")
         wandb.log({f"test_{k}": v})
 
-    dummy_input = torch.randn(1, 3, Config.INPUT_SHAPE[0], Config.INPUT_SHAPE[1]).to(device)
+    dummy_input = torch.randn(1, 3, 256, 320).to(device)
     flops, params = profile(model, inputs=(dummy_input,), verbose=False)
     print(f"\nModel Params: {params/1e6:.2f}M | FLOPs: {flops/1e9:.2f} GFLOPs")
     wandb.log({"Params (M)": params / 1e6, "FLOPs (G)": flops / 1e9})
+
+    if Config.MODEL.lower() == "deeplabv3+":
+        print("\nSummary Table:")
+        print("{:<12} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}".format("Model", "Precision", "Recall", "F1 Score", "IoU", "Params", "FLOPs"))
+        print("{:<12} {:<10.4f} {:<10.4f} {:<10.4f} {:<10.4f} {:<10.2f} {:<10.2f}".format(
+            Config.MODEL,
+            metrics.get("precision", 0.0),
+            metrics.get("recall", 0.0),
+            metrics.get("f1", 0.0),
+            metrics.get("iou", 0.0),
+            params / 1e6,
+            flops / 1e9
+        ))
 
     print("\nGenerating sample visualizations...")
     visualize_predictions(model, test_loader, device, Config.SAMPLES_DIR, num_samples=5)
@@ -168,6 +195,7 @@ def main():
 
     print("Testing complete.")
     wandb.finish()
+
 
 if __name__ == "__main__":
     main()

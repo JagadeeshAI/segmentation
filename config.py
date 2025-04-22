@@ -6,7 +6,7 @@ class Config:
     DATA_PATH_MASKS = "./data/merge_pipedata_label/*.jpg"
 
     # Output directory structure
-    OUT_DIR = "./results/deeplabv3"
+    OUT_DIR = "./results/unet"
     MODEL_DIR = os.path.join(OUT_DIR, "models")
     STATS_DIR = os.path.join(OUT_DIR, "stats")
     LOGS_DIR = os.path.join(OUT_DIR, "logs")
@@ -18,7 +18,7 @@ class Config:
     BATCH_SIZE = 16
 
     LEARNING_RATE = 1e-3
-    EPOCHS = 1000
+    EPOCHS = 10
 
     CHECKPOINT_PATH = os.path.join(MODEL_DIR, "model_epoch_{epoch:03d}.weights.h5")
     FINAL_MODEL_PATH = os.path.join(MODEL_DIR, "final_model.h5")
@@ -26,8 +26,9 @@ class Config:
     PLOT_PATH = os.path.join(PLOTS_DIR, "training_metrics.png")
 
     RESUME = False
-    MODEL='deeplabv3+'
+    MODEL='unet'
     CHECKPOINT_META_PATH="results/unet/checkpoint_meta.json"
+    FineTuned=False
 
 for path in [
     Config.OUT_DIR,
