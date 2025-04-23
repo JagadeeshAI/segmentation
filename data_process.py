@@ -75,9 +75,9 @@ def main():
     test_dataset = SegmentationDataset(test_x, test_y)
 
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=Config.BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=Config.BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=Config.BATCH_SIZE, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=Config.BATCH_SIZE, shuffle=True , num_workers=7)
+    val_loader = DataLoader(val_dataset, batch_size=Config.BATCH_SIZE, shuffle=False , num_workers=7)
+    test_loader = DataLoader(test_dataset, batch_size=Config.BATCH_SIZE, shuffle=False , num_workers=7)
 
     # Get one batch to test
     x_train, y_train = next(iter(train_loader))

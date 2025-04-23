@@ -6,7 +6,7 @@ class Config:
     DATA_PATH_MASKS = "./data/merge_pipedata_label/*.jpg"
 
     # Output directory structure
-    OUT_DIR = "./results/unet"
+    OUT_DIR = "./results/segformer"
     MODEL_DIR = os.path.join(OUT_DIR, "models")
     STATS_DIR = os.path.join(OUT_DIR, "stats")
     LOGS_DIR = os.path.join(OUT_DIR, "logs")
@@ -15,7 +15,7 @@ class Config:
 
     INPUT_SHAPE = (240, 320, 3)
     N_CLASSES = 1
-    BATCH_SIZE = 16
+    BATCH_SIZE = 64
 
     LEARNING_RATE = 1e-3
     EPOCHS = 10
@@ -26,7 +26,7 @@ class Config:
     PLOT_PATH = os.path.join(PLOTS_DIR, "training_metrics.png")
 
     RESUME = False
-    MODEL='unet'
+    MODEL='segformer'
     CHECKPOINT_META_PATH="results/unet/checkpoint_meta.json"
     FineTuned=False
 
